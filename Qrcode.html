@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recrutamento Caça-Fantasmas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root{--bg:#0d0618;--card:#1a1030;--ink:#f3eaff;--mut:#a995c9;--p:#b46bff;--p2:#ff8bd6;--line:#3a2466}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at 50% 0,#2b1250,var(--bg) 60%);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+main{max-width:520px;margin:0 auto;padding:20px 16px 40px;text-align:center}
+.ghost{font-size:64px;animation:f 3s ease-in-out infinite;filter:drop-shadow(0 0 14px var(--p))}
+@keyframes f{50%{transform:translateY(-10px)}}
+h1{font-size:26px;margin:4px 0 12px;color:var(--p);text-shadow:0 0 14px #b46bff88;letter-spacing:1px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin:14px 0}
+.mut{color:var(--mut);font-size:15px;line-height:1.5}
+.code{font:700 38px ui-monospace,Menlo,monospace;color:var(--p2);letter-spacing:3px;margin:8px 0;text-shadow:0 0 14px #ff8bd666}
+.time{font:700 56px ui-monospace,Menlo,monospace;color:var(--p);text-shadow:0 0 16px #b46bff88}
+button{font:700 17px system-ui,sans-serif;border:0;border-radius:12px;padding:14px 22px;margin:6px;cursor:pointer;background:var(--p);color:#1c0836}
+button.s{background:transparent;color:var(--p);border:1px solid var(--p)}
+button.d{background:var(--p2);color:#35082a}
+input{font:inherit;padding:14px;border-radius:10px;border:1px solid var(--line);background:#120a22;color:var(--ink);width:100%;margin:8px 0;text-align:center;font-size:18px}
+.tabs{display:flex;justify-content:center;gap:4px;margin-bottom:6px}
+table{width:100%;border-collapse:collapse;text-align:left}
+td,th{padding:8px 6px;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-size:13px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+<div class="ghost">👻</div>
+<h1>CAÇA-FANTASMAS</h1>
+<div class="tabs"><button id="tm">Missão</button><button id="tr" class="s">Ranking</button></div>
+
+<section id="mission">
+  <!-- Passo 1: nome da equipe -->
+  <div id="s1" class="card">
+    <p><b>⚠️ ALERTA PARANORMAL!</b></p>
+    <p class="mut">Atividade sobrenatural detectada nesta escola. A Central precisa de novos agentes e vocês foram <b>RECRUTADOS</b>! Para começar, registrem o nome da sua equipe.</p>
+    <input id="team" placeholder="Nome da equipe" maxlength="24" autocomplete="off">
+    <button id="reg">👻 REGISTRAR EQUIPE</button>
+  </div>
+
+  <!-- Passo 2: código + iniciar -->
+  <div id="s2" class="card hide">
+    <div class="mut">EQUIPE</div>
+    <div style="font-size:22px;font-weight:700" id="tname"></div>
+    <div class="mut" style="margin-top:12px">CÓDIGO SECRETO</div>
+    <div class="code" id="code">----</div>
+    <div class="mut">📌 Anotem ou tirem print. Vocês vão precisar deste código nas próximas estações.</div>
+  </div>
+
+  <!-- Cronômetro -->
+  <div id="s3" class="card hide">
+    <div class="mut">CRONÔMETRO DA MISSÃO</div>
+    <div class="time" id="time">00:00.0</div>
+    <div id="idle"><p class="mut">Quando o agente da Central liberar, aperte o botão abaixo.</p><button id="start">🚀 INICIAR MISSÃO</button></div>
+    <div id="run" class="hide"><p class="mut">O tempo está correndo! Sigam para as próximas estações.</p><button id="stop" class="d">🏁 FINALIZAR MISSÃO</button></div>
+    <div id="done" class="hide"><p class="mut" id="donemsg"></p>
+      <div id="qrbox"><div id="qr" style="background:#fff;padding:10px;display:inline-block;border-radius:10px"></div>
+      <p class="mut">📲 Mostre este QR Code ao agente da Central para registrar o seu tempo no ranking.</p></div>
+  </div>
+
+  <button class="s" id="reset">Nova equipe</button>
+</section>
+
+<section id="ranking" class="hide">
+  <div class="card">
+    <h2 style="margin-top:0;color:var(--p)">🏆 Ranking</h2>
+    <table><thead><tr><th>#</th><th>Equipe</th><th>Código</th><th>Tempo</th></tr></thead><tbody id="rows"></tbody></table>
+    <div id="admin" class="hide"><p class="mut">🔧 Modo equipe (administradores)</p><button class="s" id="refresh">🔄 Atualizar</button><button class="d" id="clear">🗑️ Limpar ranking</button></div>
+  </div>
+</section>
+</main>
+
+<script>
+(function(){
+var NAMES=["SLIMER","EGON","SPENGLER","ECTO","STAYPUFT","ZUUL","GOZER","RAY","WINSTON","PETER","SPECTRO","FANTASMA","BANSHEE","ESPECTRO","POLTER"];
+var DB_URL="https://recrutamento-f1781-default-rtdb.firebaseio.com";            // COLE AQUI o endereço do Firebase, ex: "https://meu-projeto-default-rtdb.firebaseio.com"
+var ADMIN_PIN="1234";     // MUDE o PIN da equipe
+var admin=false;
+var K="cf_state",KR="cf_rank",timer=null;
+function $(i){return document.getElementById(i)}
+function load(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
+function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+function fmt(ms){var t=Math.floor(ms/100),d=t%10,s=Math.floor(t/10)%60,m=Math.floor(t/600);return String(m).padStart(2,"0")+":"+String(s).padStart(2,"0")+"."+d}
+function gen(){return NAMES[Math.floor(Math.random()*NAMES.length)]+"-"+String(10+Math.floor(Math.random()*90))}
+var st=load(K,{team:null,code:null,start:null,end:null});
+
+function render(){
+  var has=!!st.team;
+  $("s1").classList.toggle("hide",has);
+  $("s2").classList.toggle("hide",!has);
+  $("s3").classList.toggle("hide",!has);
+  if(!has)return;
+  $("tname").textContent=st.team;$("code").textContent=st.code;
+  $("idle").classList.toggle("hide",!!st.start);
+  $("run").classList.toggle("hide",!st.start||!!st.end);
+  $("done").classList.toggle("hide",!st.end);
+  clearInterval(timer);
+  if(st.end){$("time").textContent=fmt(st.end-st.start);$("donemsg").textContent="Missão concluída! Tempo: "+fmt(st.end-st.start);
+    $("qrbox").classList.toggle("hide",!!DB_URL);
+    var q=$("qr");q.textContent="";
+    try{if(!DB_URL)new QRCode(q,{text:location.href.split("#")[0]+"#res="+encodeURIComponent(st.team)+"~"+st.code+"~"+(st.end-st.start),width:180,height:180})}catch(e){}}
+  else if(st.start){tick();timer=setInterval(tick,100)}
+  else $("time").textContent="00:00.0";
+}
+function tick(){if(st.start&&!st.end)$("time").textContent=fmt(Date.now()-st.start)}
+
+$("reg").onclick=function(){
+  var n=$("team").value.trim();
+  if(!n){$("team").focus();return}
+  st={team:n,code:gen(),start:null,end:null};save(K,st);render();
+};
+$("start").onclick=function(){st.start=Date.now();save(K,st);render()};
+$("stop").onclick=function(){
+  st.end=Date.now();save(K,st);
+  var rec={team:st.team,code:st.code,ms:st.end-st.start};
+  var l=load(KR,[]);l.push(rec);save(KR,l);
+  if(DB_URL){try{fetch(DB_URL+"/ranking.json",{method:"POST",body:JSON.stringify(rec)})}catch(e){}}
+  render();
+};
+$("reset").onclick=function(){
+  if(confirm("Registrar uma nova equipe e zerar o cronômetro deste aparelho?")){
+    clearInterval(timer);st={team:null,code:null,start:null,end:null};save(K,st);$("team").value="";render();
+  }
+};
+
+function showTab(t){
+  $("mission").classList.toggle("hide",t!=="m");
+  $("ranking").classList.toggle("hide",t!=="r");
+  $("tm").className=t==="m"?"":"s";$("tr").className=t==="r"?"":"s";
+  if(t==="r")drawRank();
+}
+$("tm").onclick=function(){showTab("m")};
+$("tr").onclick=function(){showTab("r")};
+
+async function getList(){
+  if(DB_URL){
+    try{var r=await fetch(DB_URL+"/ranking.json"),o=await r.json(),a=[];
+      for(var k in (o||{})){var v=o[k];v.key=k;a.push(v)}return a}catch(e){}
+  }
+  return load(KR,[]).map(function(r,i){r.idx=i;return r});
+}
+async function removeOne(r){
+  if(DB_URL&&r.key){try{await fetch(DB_URL+"/ranking/"+r.key+".json",{method:"DELETE"})}catch(e){}}
+  else{var l=load(KR,[]);l.splice(r.idx,1);save(KR,l)}
+  drawRank();
+}
+async function drawRank(){
+  var list=(await getList()).sort(function(a,b){return a.ms-b.ms}),tb=$("rows");
+  $("admin").classList.toggle("hide",!admin);
+  tb.textContent="";
+  if(!list.length){var tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=5;td.textContent="Nenhuma equipe finalizou ainda.";tr.appendChild(td);tb.appendChild(tr);return}
+  list.slice(0,30).forEach(function(r,i){
+    var tr=document.createElement("tr");
+    [i===0?"🥇":i===1?"🥈":i===2?"🥉":String(i+1),r.team,r.code,fmt(r.ms)].forEach(function(v){var td=document.createElement("td");td.textContent=v;tr.appendChild(td)});
+    if(admin){var td=document.createElement("td"),b=document.createElement("button");b.textContent="✖";b.className="s";b.style.padding="4px 10px";b.onclick=function(){removeOne(r)};td.appendChild(b);tr.appendChild(td)}
+    tb.appendChild(tr);
+  });
+}
+$("refresh").onclick=function(){drawRank()};
+$("clear").onclick=async function(){
+  if(!confirm("Apagar TODO o ranking?"))return;
+  if(DB_URL){try{await fetch(DB_URL+"/ranking.json",{method:"DELETE"})}catch(e){}}
+  save(KR,[]);drawRank();
+};
+setInterval(function(){if(!$("ranking").classList.contains("hide"))drawRank()},10000);
+function route(){
+  var h=location.hash;
+  if(h.indexOf("#res=")===0){
+    var p=h.slice(5).split("~"),ms=parseInt(p[2],10);
+    if(p.length===3&&ms>0){
+      var l=load(KR,[]),dup=l.some(function(r){return r.code===p[1]&&r.ms===ms});
+      if(!dup){l.push({team:decodeURIComponent(p[0]).slice(0,24),code:p[1].slice(0,20),ms:ms});save(KR,l)}
+    }
+    history.replaceState(null,"",location.pathname);showTab("r");
+  }else if(h==="#equipe"){
+    var pin=prompt("PIN da equipe:");admin=(pin===ADMIN_PIN);showTab("r");
+  }else if(h==="#ranking"){showTab("r")}
+}
+window.addEventListener("hashchange",route);
+render();route();
+})();
+</script>
+</body>
+</html>
